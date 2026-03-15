@@ -41,7 +41,7 @@ import { validateToken, PROVIDERS, MODELS } from "../claude.js";
 import { DATA_DIR } from "../db.js";
 import { join } from "node:path";
 
-type Section = "auth" | "personality" | "telegram" | "discord" | "whatsapp" | "dashboard" | "security" | "features" | "all";
+type Section = "auth" | "personality" | "telegram" | "discord" | "whatsapp" | "dashboard" | "security" | "features" | "email" | "calendar" | "github" | "all";
 
 function isRoot(): boolean {
   return process.getuid?.() === 0;
@@ -828,6 +828,186 @@ async function setupSecurity(): Promise<void> {
   }
 }
 
+async function setupEmail(vault: ReturnType<typeof getVault>): Promise<void> {
+  printSeparator();
+  printBox([
+    chalk.bold.yellow("Step — Email (IMAP/SMTP) (optional)"),
+    "",
+    chalk.gray("Connect your email to read and send messages."),
+    chalk.gray("Uses app passwords — no OAuth required."),
+    "",
+    chalk.white("For Gmail, generate an app password at:"),
+    chalk.cyan("   myaccount.google.com/apppasswords"),
+  ]);
+
+  const wantEmail = await p.confirm({
+    message: "Enable email integration?",
+    initialValue: !!(vault.get("IMAP_HOST")),
+  });
+  if (p.isCancel(wantEmail)) { p.cancel("Setup cancelled."); process.exit(0); }
+  if (!wantEmail) {
+    p.log.warn("Email skipped. You can add it later with: opskrew setup --section email");
+    return;
+  }
+
+  const imapHost = await p.text({
+    message: "IMAP host (e.g. imap.gmail.com):",
+    placeholder: "imap.gmail.com",
+    initialValue: vault.get("IMAP_HOST") ?? "",
+    validate(v) { if (!v.trim()) return "IMAP host is required."; },
+  });
+  if (p.isCancel(imapHost)) { p.cancel("Setup cancelled."); process.exit(0); }
+
+  const imapPort = await p.text({
+    message: "IMAP port:",
+    placeholder: "993",
+    initialValue: vault.get("IMAP_PORT") ?? "993",
+    validate(v) { if (isNaN(parseInt(v, 10))) return "Enter a valid port number."; },
+  });
+  if (p.isCancel(imapPort)) { p.cancel("Setup cancelled."); process.exit(0); }
+
+  const imapUser = await p.text({
+    message: "IMAP username (your email address):",
+    placeholder: "you@gmail.com",
+    initialValue: vault.get("IMAP_USER") ?? "",
+    validate(v) { if (!v.trim()) return "Username is required."; },
+  });
+  if (p.isCancel(imapUser)) { p.cancel("Setup cancelled."); process.exit(0); }
+
+  const imapPass = await p.password({
+    message: "IMAP password (or app password):",
+    validate(v) { if (!v.trim()) return "Password is required."; },
+  });
+  if (p.isCancel(imapPass)) { p.cancel("Setup cancelled."); process.exit(0); }
+
+  const smtpHost = await p.text({
+    message: "SMTP host (e.g. smtp.gmail.com):",
+    placeholder: "smtp.gmail.com",
+    initialValue: vault.get("SMTP_HOST") ?? "",
+    validate(v) { if (!v.trim()) return "SMTP host is required."; },
+  });
+  if (p.isCancel(smtpHost)) { p.cancel("Setup cancelled."); process.exit(0); }
+
+  const smtpPort = await p.text({
+    message: "SMTP port:",
+    placeholder: "587",
+    initialValue: vault.get("SMTP_PORT") ?? "587",
+    validate(v) { if (isNaN(parseInt(v, 10))) return "Enter a valid port number."; },
+  });
+  if (p.isCancel(smtpPort)) { p.cancel("Setup cancelled."); process.exit(0); }
+
+  const smtpUser = await p.text({
+    message: "SMTP username (your email address):",
+    placeholder: "you@gmail.com",
+    initialValue: vault.get("SMTP_USER") ?? "",
+    validate(v) { if (!v.trim()) return "Username is required."; },
+  });
+  if (p.isCancel(smtpUser)) { p.cancel("Setup cancelled."); process.exit(0); }
+
+  const smtpPass = await p.password({
+    message: "SMTP password (or app password):",
+    validate(v) { if (!v.trim()) return "Password is required."; },
+  });
+  if (p.isCancel(smtpPass)) { p.cancel("Setup cancelled."); process.exit(0); }
+
+  vault.set("IMAP_HOST", String(imapHost).trim());
+  vault.set("IMAP_PORT", String(imapPort).trim());
+  vault.set("IMAP_USER", String(imapUser).trim());
+  vault.set("IMAP_PASS", String(imapPass));
+  vault.set("SMTP_HOST", String(smtpHost).trim());
+  vault.set("SMTP_PORT", String(smtpPort).trim());
+  vault.set("SMTP_USER", String(smtpUser).trim());
+  vault.set("SMTP_PASS", String(smtpPass));
+
+  p.log.success("Email credentials saved. Enable the email feature in Features setup.");
+}
+
+async function setupCalendar(): Promise<void> {
+  printSeparator();
+  printBox([
+    chalk.bold.green("Step — Google Calendar (optional)"),
+    "",
+    chalk.gray("Connect Google Calendar via a service account."),
+    "",
+    chalk.white("To set up:"),
+    chalk.white("1. Go to ") + chalk.cyan("console.cloud.google.com"),
+    chalk.white("2. Create a project and enable the Google Calendar API"),
+    chalk.white("3. Create a service account (IAM & Admin > Service Accounts)"),
+    chalk.white("4. Download the JSON key file"),
+    chalk.white("5. In Google Calendar, share your calendar with the"),
+    chalk.white("   service account email (with Edit permissions)"),
+    chalk.white("6. Save the JSON key to ") + chalk.cyan("~/.opskrew/google-credentials.json"),
+  ]);
+
+  const wantCalendar = await p.confirm({
+    message: "Enable Google Calendar integration?",
+    initialValue: false,
+  });
+  if (p.isCancel(wantCalendar)) { p.cancel("Setup cancelled."); process.exit(0); }
+  if (!wantCalendar) {
+    p.log.warn("Calendar skipped. You can add it later with: opskrew setup --section calendar");
+    return;
+  }
+
+  const { existsSync } = await import("node:fs");
+  const { homedir } = await import("node:os");
+  const { join } = await import("node:path");
+  const credPath = join(homedir(), ".opskrew", "google-credentials.json");
+
+  if (existsSync(credPath)) {
+    p.log.success(`Credentials found at ${credPath}`);
+  } else {
+    p.log.warn(`No credentials file found at ${credPath}`);
+    p.log.info("Place your service account JSON at that path, then re-run: opskrew setup --section calendar");
+  }
+
+  p.log.info("Enable the calendar feature in Features setup to activate it.");
+}
+
+async function setupGithub(vault: ReturnType<typeof getVault>): Promise<void> {
+  printSeparator();
+  printBox([
+    chalk.bold.cyan("Step — GitHub (optional)"),
+    "",
+    chalk.gray("Connect GitHub via a Personal Access Token."),
+    "",
+    chalk.white("To get your token:"),
+    chalk.white("1. Go to ") + chalk.cyan("github.com/settings/tokens"),
+    chalk.white("2. Click 'Generate new token (classic)'"),
+    chalk.white("3. Select scopes: repo, notifications, read:user"),
+    chalk.white("4. Copy the token"),
+  ]);
+
+  const wantGithub = await p.confirm({
+    message: "Enable GitHub integration?",
+    initialValue: !!(vault.get("GITHUB_TOKEN")),
+  });
+  if (p.isCancel(wantGithub)) { p.cancel("Setup cancelled."); process.exit(0); }
+  if (!wantGithub) {
+    p.log.warn("GitHub skipped. You can add it later with: opskrew setup --section github");
+    return;
+  }
+
+  const currentToken = vault.get("GITHUB_TOKEN");
+  if (currentToken) {
+    const keep = await p.confirm({ message: "A GitHub token is already saved. Keep it?", initialValue: true });
+    if (p.isCancel(keep)) { p.cancel("Setup cancelled."); process.exit(0); }
+    if (keep) {
+      p.log.success("GitHub token unchanged.");
+      return;
+    }
+  }
+
+  const token = await p.password({
+    message: "GitHub Personal Access Token:",
+    validate(v) { if (!v.trim()) return "Token is required."; },
+  });
+  if (p.isCancel(token)) { p.cancel("Setup cancelled."); process.exit(0); }
+
+  vault.set("GITHUB_TOKEN", String(token).trim());
+  p.log.success("GitHub token saved. Enable the github feature in Features setup to activate it.");
+}
+
 export async function setupCommand(options: { section?: string } = {}): Promise<void> {
   printHeader();
 
@@ -835,18 +1015,18 @@ export async function setupCommand(options: { section?: string } = {}): Promise<
   const config = getConfig();
   const alreadyConfigured = hasExistingSetup();
 
-  let sectionsToRun: Section[] = ["auth", "personality", "telegram", "discord", "whatsapp", "dashboard", "features", "security"];
+  let sectionsToRun: Section[] = ["auth", "personality", "telegram", "discord", "whatsapp", "dashboard", "features", "email", "calendar", "github", "security"];
 
   // Handle --section flag
   if (options.section) {
-    const valid: Section[] = ["auth", "personality", "telegram", "discord", "whatsapp", "dashboard", "security", "features", "all"];
+    const valid: Section[] = ["auth", "personality", "telegram", "discord", "whatsapp", "dashboard", "security", "features", "email", "calendar", "github", "all"];
     if (!valid.includes(options.section as Section)) {
       console.error(chalk.red(`✗ Unknown section: ${options.section}`));
-      console.error(chalk.gray("  Valid options: auth, personality, telegram, discord, whatsapp, dashboard, security, features, all"));
+      console.error(chalk.gray("  Valid options: auth, personality, telegram, discord, whatsapp, dashboard, security, features, email, calendar, github, all"));
       process.exit(1);
     }
     if (options.section === "all") {
-      sectionsToRun = ["auth", "personality", "telegram", "discord", "whatsapp", "dashboard", "features", "security"];
+      sectionsToRun = ["auth", "personality", "telegram", "discord", "whatsapp", "dashboard", "features", "email", "calendar", "github", "security"];
     } else {
       sectionsToRun = [options.section as Section];
     }
@@ -864,6 +1044,9 @@ export async function setupCommand(options: { section?: string } = {}): Promise<
         { value: "whatsapp", label: " WhatsApp — Phone number allowlist" },
         { value: "dashboard", label: " Dashboard — Web UI port" },
         { value: "features", label: " Features — Web search, reminders, vision, voice..." },
+        { value: "email", label: " Email — IMAP/SMTP credentials" },
+        { value: "calendar", label: " Calendar — Google Calendar service account" },
+        { value: "github", label: " GitHub — Personal Access Token" },
         { value: "security", label: " Security — Apply server hardening" },
         { value: "all", label: "Everything — Re-run the full setup" },
       ],
@@ -915,6 +1098,12 @@ export async function setupCommand(options: { section?: string } = {}): Promise<
       autoUpdateChange = result.autoUpdate;
     } else if (section === "security") {
       await setupSecurity();
+    } else if (section === "email") {
+      await setupEmail(vault);
+    } else if (section === "calendar") {
+      await setupCalendar();
+    } else if (section === "github") {
+      await setupGithub(vault);
     }
   }
 

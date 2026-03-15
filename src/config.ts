@@ -13,6 +13,9 @@ export interface Features {
   vision: boolean;
   autoSummary: boolean;
   teamAutoDelegate: boolean;
+  email?: boolean;
+  calendar?: boolean;
+  github?: boolean;
 }
 
 export interface Config {

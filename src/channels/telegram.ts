@@ -16,6 +16,15 @@ import { getUsageStats, estimateCost } from "../tools/usage.js";
 import { loadSkills, toggleSkill, downloadSkill, addSkill } from "../tools/skills.js";
 import { scanSkillRemote } from "../tools/skill-scanner.js";
 import { loadAgents, delegateToAgent } from "../tools/team.js";
+import { emailRead, emailSend, emailSearch } from "../tools/email.js";
+import { calendarToday, calendarWeek, calendarAdd, calendarSearch } from "../tools/calendar.js";
+import {
+  githubRepos,
+  githubIssues,
+  githubPRs,
+  githubCreateIssue,
+  githubNotifications,
+} from "../tools/github.js";
 
 function isAllowed(username: string | undefined, allowedUsers: string[]): boolean {
   if (allowedUsers.length === 0) return true;
@@ -371,6 +380,182 @@ export function startTelegram(): void {
       `Equivalent API cost: ${costFmt(allCost)} <i>(covered by subscription)</i>`;
 
     await sendTelegramMessage(botToken, ctx.chat!.id, msg);
+  });
+
+  // /email command
+  bot.command("email", async (ctx: Context) => {
+    const username = ctx.from?.username;
+    const cfg = getConfig();
+    if (!isAllowed(username, cfg.telegram.allowedUsers)) {
+      await sendTelegramMessage(botToken, ctx.chat!.id, "⛔ Unauthorized.");
+      return;
+    }
+    if (!cfg.features.email) {
+      await sendTelegramMessage(botToken, ctx.chat!.id, "Email integration is not enabled.\n\nEnable it with: opskrew setup --section features");
+      return;
+    }
+
+    const text = (ctx.message as { text?: string })?.text ?? "";
+    const parts = text.split(" ").slice(1);
+    const sub = parts[0]?.toLowerCase();
+
+    try {
+      if (!sub || sub === "read") {
+        const n = parseInt(parts[1] ?? "5", 10) || 5;
+        await sendTelegramMessage(botToken, ctx.chat!.id, "Reading emails...");
+        const result = await emailRead(n);
+        await sendTelegramMessage(botToken, ctx.chat!.id, result);
+      } else if (sub === "search") {
+        const query = parts.slice(1).join(" ").trim();
+        if (!query) {
+          await sendTelegramMessage(botToken, ctx.chat!.id, "Usage: /email search &lt;query&gt;");
+          return;
+        }
+        await sendTelegramMessage(botToken, ctx.chat!.id, "Searching emails...");
+        const result = await emailSearch(query);
+        await sendTelegramMessage(botToken, ctx.chat!.id, result);
+      } else if (sub === "send") {
+        // /email send to@example.com | Subject | Body
+        const rest = parts.slice(1).join(" ");
+        const [to, subject, ...bodyParts] = rest.split("|").map((s) => s.trim());
+        const body = bodyParts.join("|");
+        if (!to || !subject || !body) {
+          await sendTelegramMessage(botToken, ctx.chat!.id, "Usage: /email send to@example.com | Subject | Body");
+          return;
+        }
+        const result = await emailSend(to, subject, body);
+        await sendTelegramMessage(botToken, ctx.chat!.id, result);
+      } else {
+        await sendTelegramMessage(
+          botToken,
+          ctx.chat!.id,
+          "/email — Email commands:\n\n/email read [N] — read last N emails\n/email search &lt;query&gt; — search emails\n/email send to@example.com | Subject | Body — send email",
+        );
+      }
+    } catch (err) {
+      await sendTelegramMessage(botToken, ctx.chat!.id, `❌ Email error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+
+  // /calendar command
+  bot.command("calendar", async (ctx: Context) => {
+    const username = ctx.from?.username;
+    const cfg = getConfig();
+    if (!isAllowed(username, cfg.telegram.allowedUsers)) {
+      await sendTelegramMessage(botToken, ctx.chat!.id, "⛔ Unauthorized.");
+      return;
+    }
+    if (!cfg.features.calendar) {
+      await sendTelegramMessage(botToken, ctx.chat!.id, "Calendar integration is not enabled.\n\nEnable it with: opskrew setup --section features");
+      return;
+    }
+
+    const text = (ctx.message as { text?: string })?.text ?? "";
+    const parts = text.split(" ").slice(1);
+    const sub = parts[0]?.toLowerCase();
+
+    try {
+      if (!sub || sub === "today") {
+        const result = await calendarToday();
+        await sendTelegramMessage(botToken, ctx.chat!.id, result);
+      } else if (sub === "week") {
+        const result = await calendarWeek();
+        await sendTelegramMessage(botToken, ctx.chat!.id, result);
+      } else if (sub === "search") {
+        const query = parts.slice(1).join(" ").trim();
+        if (!query) {
+          await sendTelegramMessage(botToken, ctx.chat!.id, "Usage: /calendar search &lt;query&gt;");
+          return;
+        }
+        const result = await calendarSearch(query);
+        await sendTelegramMessage(botToken, ctx.chat!.id, result);
+      } else if (sub === "add") {
+        // /calendar add title | YYYY-MM-DD HH:mm | duration_minutes
+        const rest = parts.slice(1).join(" ");
+        const [title, dateStr, durStr] = rest.split("|").map((s) => s.trim());
+        if (!title || !dateStr) {
+          await sendTelegramMessage(botToken, ctx.chat!.id, "Usage: /calendar add title | YYYY-MM-DD HH:mm | duration_minutes");
+          return;
+        }
+        const duration = parseInt(durStr ?? "60", 10) || 60;
+        const result = await calendarAdd(title, dateStr, duration);
+        await sendTelegramMessage(botToken, ctx.chat!.id, result);
+      } else {
+        await sendTelegramMessage(
+          botToken,
+          ctx.chat!.id,
+          "/calendar — Calendar commands:\n\n/calendar today — today's events\n/calendar week — this week's events\n/calendar search &lt;query&gt; — search events\n/calendar add title | YYYY-MM-DD HH:mm | minutes — create event",
+        );
+      }
+    } catch (err) {
+      await sendTelegramMessage(botToken, ctx.chat!.id, `❌ Calendar error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+
+  // /github command
+  bot.command("github", async (ctx: Context) => {
+    const username = ctx.from?.username;
+    const cfg = getConfig();
+    if (!isAllowed(username, cfg.telegram.allowedUsers)) {
+      await sendTelegramMessage(botToken, ctx.chat!.id, "⛔ Unauthorized.");
+      return;
+    }
+    if (!cfg.features.github) {
+      await sendTelegramMessage(botToken, ctx.chat!.id, "GitHub integration is not enabled.\n\nEnable it with: opskrew setup --section features");
+      return;
+    }
+
+    const text = (ctx.message as { text?: string })?.text ?? "";
+    const parts = text.split(" ").slice(1);
+    const sub = parts[0]?.toLowerCase();
+
+    try {
+      if (!sub || sub === "repos") {
+        await sendTelegramMessage(botToken, ctx.chat!.id, "Fetching repos...");
+        const result = await githubRepos();
+        await sendTelegramMessage(botToken, ctx.chat!.id, result);
+      } else if (sub === "notifications") {
+        const result = await githubNotifications();
+        await sendTelegramMessage(botToken, ctx.chat!.id, result);
+      } else if (sub === "issues") {
+        const ownerRepo = parts[1];
+        if (!ownerRepo) {
+          await sendTelegramMessage(botToken, ctx.chat!.id, "Usage: /github issues owner/repo");
+          return;
+        }
+        await sendTelegramMessage(botToken, ctx.chat!.id, `Fetching issues for ${ownerRepo}...`);
+        const result = await githubIssues(ownerRepo);
+        await sendTelegramMessage(botToken, ctx.chat!.id, result);
+      } else if (sub === "pr" || sub === "prs") {
+        const ownerRepo = parts[1];
+        if (!ownerRepo) {
+          await sendTelegramMessage(botToken, ctx.chat!.id, "Usage: /github pr owner/repo");
+          return;
+        }
+        await sendTelegramMessage(botToken, ctx.chat!.id, `Fetching PRs for ${ownerRepo}...`);
+        const result = await githubPRs(ownerRepo);
+        await sendTelegramMessage(botToken, ctx.chat!.id, result);
+      } else if (sub === "issue" || sub === "create-issue") {
+        // /github issue owner/repo | title | body
+        const rest = parts.slice(1).join(" ");
+        const [ownerRepo, issueTitle, ...bodyParts] = rest.split("|").map((s) => s.trim());
+        const issueBody = bodyParts.join("|");
+        if (!ownerRepo || !issueTitle) {
+          await sendTelegramMessage(botToken, ctx.chat!.id, "Usage: /github issue owner/repo | title | body");
+          return;
+        }
+        const result = await githubCreateIssue(ownerRepo, issueTitle, issueBody || "");
+        await sendTelegramMessage(botToken, ctx.chat!.id, result);
+      } else {
+        await sendTelegramMessage(
+          botToken,
+          ctx.chat!.id,
+          "/github — GitHub commands:\n\n/github repos — list your repos\n/github notifications — unread notifications\n/github issues owner/repo — list open issues\n/github pr owner/repo — list open PRs\n/github issue owner/repo | title | body — create issue",
+        );
+      }
+    } catch (err) {
+      await sendTelegramMessage(botToken, ctx.chat!.id, `❌ GitHub error: ${err instanceof Error ? err.message : String(err)}`);
+    }
   });
 
   bot.on("text", async (ctx: Context) => {

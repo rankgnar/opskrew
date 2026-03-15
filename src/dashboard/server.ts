@@ -15,6 +15,9 @@ import { getConfig, saveConfig } from "../config.js";
 import { getUsageStats, getDailyUsage } from "../tools/usage.js";
 import { PERSONALITIES } from "../tools/personalities.js";
 import { getLastCheckInfo } from "../tools/auto-update.js";
+import { isEmailConfigured } from "../tools/email.js";
+import { isCalendarConfigured } from "../tools/calendar.js";
+import { isGithubConfigured } from "../tools/github.js";
 
 function esc(s: string): string {
   return String(s ?? "")
@@ -1213,6 +1216,13 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 
   let _allProviders = [];
 
+  async function loadToolsStatus() {
+    try {
+      const res = await fetch('/api/tools/status');
+      return res.ok ? await res.json() : null;
+    } catch { return null; }
+  }
+
   async function loadSettings() {
     const body = document.getElementById('content-body');
     body.innerHTML = '<div class="loading">Loading settings…</div>';
@@ -1223,7 +1233,8 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
         api('/api/providers'),
       ]);
       _allProviders = providers;
-      renderSettings(cfg, sys);
+      const toolsStatus = await loadToolsStatus();
+      renderSettings(cfg, sys, toolsStatus);
       loadUpdateStatus();
     } catch (e) {
       body.innerHTML = '<div class="empty"><div class="empty-icon">❌</div><div class="empty-text">Failed to load settings</div></div>';
@@ -1310,7 +1321,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     el.type = el.type === 'password' ? 'text' : 'password';
   }
 
-  function renderSettings(cfg, sys) {
+  function renderSettings(cfg, sys, toolsStatus) {
     _currentFeatures = Object.assign({}, cfg.features || {});
     _currentVoice = !!cfg.features.voice;
     _currentDashEnabled = !!(cfg.dashboard && cfg.dashboard.enabled);
@@ -1535,6 +1546,28 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       <div class="settings-section">
         <div class="settings-section-title">🔧 Features <span style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(click to toggle — auto-saves)</span></div>
         <div class="features-grid">\${featureRows}</div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-section-title">🔌 Integrations</div>
+        <div class="settings-grid">
+          \${toolsStatus ? \`
+          <div class="settings-card">
+            <div class="settings-card-label">Email (IMAP/SMTP)</div>
+            <div class="settings-card-value" style="color:\${toolsStatus.email.configured ? 'var(--green)' : '#ff9944'}">\${toolsStatus.email.configured ? 'Configured' : 'Not configured'}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Feature: \${toolsStatus.email.enabled ? 'Enabled' : 'Disabled'} &middot; opskrew setup --section email</div>
+          </div>
+          <div class="settings-card">
+            <div class="settings-card-label">Google Calendar</div>
+            <div class="settings-card-value" style="color:\${toolsStatus.calendar.configured ? 'var(--green)' : '#ff9944'}">\${toolsStatus.calendar.configured ? 'Configured' : 'Not configured'}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Feature: \${toolsStatus.calendar.enabled ? 'Enabled' : 'Disabled'} &middot; opskrew setup --section calendar</div>
+          </div>
+          <div class="settings-card">
+            <div class="settings-card-label">GitHub</div>
+            <div class="settings-card-value" style="color:\${toolsStatus.github.configured ? 'var(--green)' : '#ff9944'}">\${toolsStatus.github.configured ? 'Configured' : 'Not configured'}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Feature: \${toolsStatus.github.enabled ? 'Enabled' : 'Disabled'} &middot; opskrew setup --section github</div>
+          </div>
+          \` : '<div style="color:var(--muted);font-size:13px">Could not load integrations status.</div>'}
+        </div>
       </div>
       <div class="settings-section">
         <div class="settings-section-title">📡 Channels</div>
@@ -3181,6 +3214,30 @@ export function startDashboard(port = 3000): void {
       res.json(msgs);
     } catch (err) {
       console.error("[dashboard] GET /api/team/:id/history error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ── Tools Status ─────────────────────────────────────
+  app.get("/api/tools/status", (_req: Request, res: Response) => {
+    try {
+      const config = getConfig();
+      res.json({
+        email: {
+          configured: isEmailConfigured(),
+          enabled: config.features.email ?? false,
+        },
+        calendar: {
+          configured: isCalendarConfigured(),
+          enabled: config.features.calendar ?? false,
+        },
+        github: {
+          configured: isGithubConfigured(),
+          enabled: config.features.github ?? false,
+        },
+      });
+    } catch (err) {
+      console.error("[dashboard] GET /api/tools/status error:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });

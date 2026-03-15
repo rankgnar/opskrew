@@ -89,9 +89,39 @@ Do NOT mention that you're in "onboarding mode" or that this is scripted. Be nat
     );
   }
 
+  if (features.email) {
+    toolInstructions.push(
+      "Email tools — use these tags when the user asks about email:\n" +
+      "  [EMAIL_READ: N] — read the last N emails from inbox (default 5 if N omitted)\n" +
+      "  [EMAIL_SEND: to@example.com | Subject | Body] — send an email\n" +
+      "  [EMAIL_SEARCH: query] — search emails by subject or sender"
+    );
+  }
+
+  if (features.calendar) {
+    toolInstructions.push(
+      "Google Calendar tools — use these tags when the user asks about their schedule:\n" +
+      "  [CALENDAR_TODAY] — get today's events\n" +
+      "  [CALENDAR_WEEK] — get this week's events\n" +
+      "  [CALENDAR_ADD: title | YYYY-MM-DD HH:mm | duration_minutes] — create a new event\n" +
+      "  [CALENDAR_SEARCH: query] — search for events"
+    );
+  }
+
+  if (features.github) {
+    toolInstructions.push(
+      "GitHub tools — use these tags when the user asks about GitHub:\n" +
+      "  [GITHUB_REPOS] — list the user's repositories\n" +
+      "  [GITHUB_ISSUES: owner/repo] — list open issues in a repo\n" +
+      "  [GITHUB_PR: owner/repo] — list open pull requests in a repo\n" +
+      "  [GITHUB_CREATE_ISSUE: owner/repo | title | body] — create a new issue\n" +
+      "  [GITHUB_NOTIFICATIONS] — list unread GitHub notifications"
+    );
+  }
+
   if (toolInstructions.length > 0) {
     parts.push(
-      `\n## Available tools:\nThe system will execute these tags automatically and you'll see the results.\n\n${toolInstructions.join("\n")}`
+      `\n## Available tools:\nThe system will execute these tags automatically and you'll see the results.\n\n${toolInstructions.join("\n\n")}`
     );
   }
 
