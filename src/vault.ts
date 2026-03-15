@@ -4,7 +4,7 @@ import {
   randomBytes,
   scryptSync,
 } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, chmodSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { DATA_DIR } from "./db.js";
 
@@ -65,6 +65,25 @@ function writeVault(data: VaultData): void {
     }),
     "utf8",
   );
+  // Enforce 600 permissions — owner read/write only
+  try {
+    chmodSync(VAULT_PATH, 0o600);
+  } catch (err) {
+    console.warn("[vault] Could not set vault permissions:", err);
+  }
+}
+
+function checkVaultPermissions(): void {
+  if (!existsSync(VAULT_PATH)) return;
+  try {
+    const mode = statSync(VAULT_PATH).mode & 0o777;
+    if (mode !== 0o600) {
+      console.warn(`[vault] WARNING: vault.enc has permissions ${mode.toString(8)} — expected 600 (owner only). Fixing...`);
+      chmodSync(VAULT_PATH, 0o600);
+    }
+  } catch {
+    // Non-fatal
+  }
 }
 
 export interface Vault {
@@ -75,6 +94,8 @@ export interface Vault {
 }
 
 export function getVault(): Vault {
+  // Check permissions on each access
+  checkVaultPermissions();
   return {
     get(key: string): string | undefined {
       return readVault()[key];

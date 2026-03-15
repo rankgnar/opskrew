@@ -9,6 +9,16 @@ import { DEFAULT_SKILL_FILES } from "./tools/default-skills.js";
 import { AGENTS_DIR, ensureAgentsDir, addAgent } from "./tools/team.js";
 import { DEFAULT_AGENTS } from "./tools/default-agents.js";
 
+// ── Global error handlers (resilience) ───────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  console.error('[opskrew] Uncaught exception:', err);
+  // No exit — PM2 will restart if needed
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[opskrew] Unhandled rejection:', reason);
+});
+
 function installDefaultSkills(): void {
   ensureSkillsDir();
   const existing = readdirSync(SKILLS_DIR).filter(
@@ -83,6 +93,15 @@ async function main(): Promise<void> {
   }
 
   console.log("[opskrew] Running. Press Ctrl+C to stop.");
+
+  // ── Graceful shutdown ───────────────────────────────────────────────────────
+  const shutdown = async () => {
+    console.log('[opskrew] Shutting down gracefully...');
+    try { getDb().close(); } catch {}
+    process.exit(0);
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 main().catch((err) => {

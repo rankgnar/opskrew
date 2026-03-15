@@ -2484,6 +2484,42 @@ export function startDashboard(port = 3000): void {
   const app = express();
   app.use(express.json({ limit: "10mb" }));
 
+  // ── Security headers (helmet-like) ─────────────────────────────────────────
+  app.use((_req: Request, res: Response, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;",
+    );
+    next();
+  });
+
+  // ── Rate limiting: max 100 requests/min per IP ──────────────────────────────
+  const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  const RATE_LIMIT = 100;
+  const RATE_WINDOW_MS = 60 * 1000;
+
+  app.use((req: Request, res: Response, next) => {
+    // Only apply to API routes
+    if (!req.path.startsWith('/api/')) { next(); return; }
+    const ip = req.socket?.remoteAddress ?? 'unknown';
+    const now = Date.now();
+    let entry = rateLimitMap.get(ip);
+    if (!entry || now >= entry.resetAt) {
+      entry = { count: 0, resetAt: now + RATE_WINDOW_MS };
+      rateLimitMap.set(ip, entry);
+    }
+    entry.count++;
+    if (entry.count > RATE_LIMIT) {
+      res.status(429).json({ error: 'Too many requests. Please slow down.' });
+      return;
+    }
+    next();
+  });
+
   app.get("/", (_req: Request, res: Response) => {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(DASHBOARD_HTML);

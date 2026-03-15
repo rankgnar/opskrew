@@ -249,6 +249,16 @@ export function vaultKeyForProvider(provider: string): string {
   }
 }
 
+// ── Retry helpers ─────────────────────────────────────────────────────────────
+
+const RETRY_STATUSES = new Set([429, 500, 502, 503, 529]);
+const NO_RETRY_STATUSES = new Set([400, 401, 403]);
+const RETRY_DELAYS_MS = [1000, 3000, 9000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // ── chat() ────────────────────────────────────────────────────────────────────
 
 export async function chat(
@@ -288,62 +298,81 @@ export async function chat(
     Object.assign(headers, providerDef.extraHeaders(token));
   }
 
-  if (providerDef.format === "anthropic") {
-    // ── Anthropic format ─────────────────────────────────────────────────────
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model,
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages: normalizeMessages(messages),
-      }),
-    });
+  const maxAttempts = RETRY_DELAYS_MS.length + 1;
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Anthropic API error ${res.status}: ${err}`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (providerDef.format === "anthropic") {
+      // ── Anthropic format ───────────────────────────────────────────────────
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model,
+          max_tokens: 4096,
+          system: systemPrompt,
+          messages: normalizeMessages(messages),
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        if (NO_RETRY_STATUSES.has(res.status) || !RETRY_STATUSES.has(res.status) || attempt >= maxAttempts) {
+          throw new Error(`Anthropic API error ${res.status}: ${err}`);
+        }
+        const delay = RETRY_DELAYS_MS[attempt - 1];
+        console.warn(`[claude] Anthropic API error ${res.status} — retrying in ${delay}ms (attempt ${attempt}/${maxAttempts - 1})`);
+        await sleep(delay);
+        continue;
+      }
+
+      const data = (await res.json()) as {
+        content: Array<{ text: string }>;
+        usage?: ChatUsage;
+      };
+      return {
+        text: data.content[0].text,
+        usage: data.usage ?? { input_tokens: 0, output_tokens: 0 },
+      };
+    } else {
+      // ── OpenAI-compatible format ─────────────────────────────────────────
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model,
+          messages: toOpenAiMessages(messages, systemPrompt),
+          max_tokens: 4096,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        if (NO_RETRY_STATUSES.has(res.status) || !RETRY_STATUSES.has(res.status) || attempt >= maxAttempts) {
+          throw new Error(`${provider} API error ${res.status}: ${err}`);
+        }
+        const delay = RETRY_DELAYS_MS[attempt - 1];
+        console.warn(`[claude] ${provider} API error ${res.status} — retrying in ${delay}ms (attempt ${attempt}/${maxAttempts - 1})`);
+        await sleep(delay);
+        continue;
+      }
+
+      const data = (await res.json()) as {
+        choices: Array<{ message: { content: string } }>;
+        usage?: { prompt_tokens: number; completion_tokens: number };
+      };
+
+      return {
+        text: data.choices[0].message.content,
+        usage: {
+          input_tokens: data.usage?.prompt_tokens ?? 0,
+          output_tokens: data.usage?.completion_tokens ?? 0,
+        },
+      };
     }
-
-    const data = (await res.json()) as {
-      content: Array<{ text: string }>;
-      usage?: ChatUsage;
-    };
-    return {
-      text: data.content[0].text,
-      usage: data.usage ?? { input_tokens: 0, output_tokens: 0 },
-    };
-  } else {
-    // ── OpenAI-compatible format ──────────────────────────────────────────────
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model,
-        messages: toOpenAiMessages(messages, systemPrompt),
-        max_tokens: 4096,
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`${provider} API error ${res.status}: ${err}`);
-    }
-
-    const data = (await res.json()) as {
-      choices: Array<{ message: { content: string } }>;
-      usage?: { prompt_tokens: number; completion_tokens: number };
-    };
-
-    return {
-      text: data.choices[0].message.content,
-      usage: {
-        input_tokens: data.usage?.prompt_tokens ?? 0,
-        output_tokens: data.usage?.completion_tokens ?? 0,
-      },
-    };
   }
+
+  // Should never reach here
+  throw new Error(`${provider} API: max retries exceeded`);
 }
 
 // ── validateToken() ───────────────────────────────────────────────────────────

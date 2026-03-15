@@ -20,6 +20,42 @@ import {
   githubNotifications,
 } from "../tools/github.js";
 
+// ── Security: API token patterns ─────────────────────────────────────────────
+const TOKEN_PATTERNS = [
+  /sk-ant-[a-zA-Z0-9_-]{10,}/g,   // Anthropic
+  /sk-or-[a-zA-Z0-9_-]{10,}/g,    // OpenRouter
+  /sk-[a-zA-Z0-9]{20,}/g,         // OpenAI and similar
+  /AIza[a-zA-Z0-9_-]{35}/g,       // Google API
+  /ghp_[a-zA-Z0-9]{36}/g,         // GitHub Personal Access Token
+  /ghs_[a-zA-Z0-9]{36}/g,         // GitHub server token
+];
+
+function looksLikeToken(text: string): boolean {
+  return TOKEN_PATTERNS.some((p) => p.test(text));
+}
+
+function redactTokens(text: string): string {
+  let out = text;
+  for (const pattern of TOKEN_PATTERNS) {
+    out = out.replace(new RegExp(pattern.source, pattern.flags), '[REDACTED_TOKEN]');
+  }
+  return out;
+}
+
+// ── Security: Input sanitization ─────────────────────────────────────────────
+const MAX_MESSAGE_LENGTH = 10000;
+
+function sanitizeInput(text: string): string {
+  // Strip control characters except newlines (\n, \r) and tabs (\t)
+  // eslint-disable-next-line no-control-regex
+  let sanitized = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  // Truncate to max length
+  if (sanitized.length > MAX_MESSAGE_LENGTH) {
+    sanitized = sanitized.slice(0, MAX_MESSAGE_LENGTH) + '\n[Message truncated: exceeded 10000 character limit]';
+  }
+  return sanitized;
+}
+
 /**
  * Process Claude's response:
  * 1. Parse and save [MEMORY: ...] tags
@@ -35,6 +71,7 @@ export async function processResponse(
   chatId: string,
   model: string,
 ): Promise<string> {
+  try {
   const config = getConfig();
   const features = config.features;
 
@@ -327,6 +364,10 @@ export async function processResponse(
   }
 
   return reply || rawReply;
+  } catch (err) {
+    console.error('[shared] processResponse error — returning raw reply:', err);
+    return rawReply;
+  }
 }
 
 export interface ProcessMessageOpts {
@@ -349,8 +390,21 @@ export interface ProcessMessageOpts {
  * 8. Send cleaned response via sendReply
  */
 export async function processMessage(opts: ProcessMessageOpts): Promise<void> {
-  const { chatId, text, imageBase64, imageMediaType, sendReply } = opts;
+  const { chatId, imageBase64, imageMediaType, sendReply } = opts;
+  // Sanitize and check input text
+  const text = sanitizeInput(opts.text);
   const config = getConfig();
+
+  // Security: detect and warn about API tokens in user messages
+  if (looksLikeToken(text)) {
+    console.warn(`[shared] Possible API token detected in message from ${chatId} — not forwarding to LLM`);
+    await sendReply(
+      '⚠️ **Security warning:** Your message appears to contain an API key or secret token. ' +
+      'For your security, this message was not sent to the AI. ' +
+      'Please never share API keys in chat. If you accidentally leaked a key, revoke it immediately.'
+    );
+    return;
+  }
 
   // Auto-summarize if enabled and history is getting long
   if (config.features.autoSummary) {

@@ -39,7 +39,7 @@ async function downloadAttachment(url: string): Promise<Buffer> {
   return Buffer.from(ab);
 }
 
-export function startDiscord(botToken: string, allowedUsers: string[]): Client {
+function createDiscordClient(botToken: string, allowedUsers: string[]): Client {
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -51,6 +51,22 @@ export function startDiscord(botToken: string, allowedUsers: string[]): Client {
 
   client.once("ready", () => {
     console.log(`[discord] Bot ready: ${client.user?.tag}`);
+  });
+
+  // Reconnection: re-create client on fatal disconnect
+  client.on("error", (err: Error) => {
+    console.error("[discord] Client error:", err);
+  });
+
+  client.on("disconnect" as Parameters<typeof client.on>[0], () => {
+    console.warn("[discord] Disconnected. Attempting to reconnect...");
+    setTimeout(() => {
+      try {
+        createDiscordClient(botToken, allowedUsers);
+      } catch (reconnErr) {
+        console.error("[discord] Reconnection failed:", reconnErr);
+      }
+    }, 5000);
   });
 
   client.on("messageCreate", async (msg: DiscordMessage) => {
@@ -167,4 +183,8 @@ export function startDiscord(botToken: string, allowedUsers: string[]): Client {
   });
 
   return client;
+}
+
+export function startDiscord(botToken: string, allowedUsers: string[]): Client {
+  return createDiscordClient(botToken, allowedUsers);
 }

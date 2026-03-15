@@ -35,9 +35,21 @@ export function startCommand(): void {
   }
 
   try {
-    execSync(`pm2 start ${runtimePath} --name opskrew --interpreter node`, {
-      stdio: "inherit",
-    });
+    // Use ecosystem.config.cjs if it exists alongside the binary (dist/)
+    // or in the package root (one level up from binDir)
+    const ecosystemPaths = [
+      join(binDir, "ecosystem.config.cjs"),
+      join(binDir, "..", "ecosystem.config.cjs"),
+    ];
+    const ecosystemFile = ecosystemPaths.find((p) => existsSync(p));
+
+    if (ecosystemFile) {
+      execSync(`pm2 start ${ecosystemFile}`, { stdio: "inherit" });
+    } else {
+      execSync(`pm2 start ${runtimePath} --name opskrew --interpreter node`, {
+        stdio: "inherit",
+      });
+    }
     console.log(chalk.green("\n✓ opskrew started. Use: opskrew status"));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
