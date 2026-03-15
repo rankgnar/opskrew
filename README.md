@@ -112,6 +112,26 @@ Switch via `/mode <name>` in chat or from the dashboard.
 - Cost estimation by provider and model
 - 7-day usage chart in the dashboard
 
+### 📧 Email Integration
+
+Read, search, and send emails through your existing email account. Works with Gmail, Outlook, Yahoo, Fastmail, and any IMAP/SMTP provider. App password support for Gmail 2FA. See [docs/email.md](docs/email.md).
+
+### 📅 Calendar Integration
+
+View today's events, your week schedule, create events, and search upcoming events via Google Calendar service account. See [docs/calendar.md](docs/calendar.md).
+
+### 🐙 GitHub Integration
+
+List repositories, view issues and pull requests, create issues, and check notifications using a Personal Access Token. See [docs/github.md](docs/github.md).
+
+### 🛡️ Security Hardening
+
+AES-256-GCM encrypted vault, token detection before LLM calls, skill scanner, localhost-only dashboard, and optional UFW + fail2ban server hardening via setup wizard. See [docs/security.md](docs/security.md).
+
+### 🔄 Resilience
+
+Auto-retry on AI provider failures, PM2 crash recovery with automatic restart, WhatsApp auto-reconnect, and SQLite WAL mode for crash-safe database writes.
+
 ### 🧩 Skills System
 
 Skills extend the assistant with specialized instructions that activate only when a trigger keyword is detected — no token waste when idle.
@@ -120,7 +140,7 @@ Skills use the **AgentSkills** `.md` format (YAML frontmatter + Markdown body), 
 
 Built-in skills include: coding helper, translator, email writer, summarizer, creative writer.
 
-You can write your own or install from a file or URL. Every skill is scanned before installation for prompt injection, RCE patterns, and data exfiltration.
+You can write your own or install from a file or URL. Every skill is scanned before installation for prompt injection, RCE patterns, and data exfiltration. See [docs/skills.md](docs/skills.md).
 
 ### 👥 Team Agents
 
@@ -130,7 +150,7 @@ Delegate tasks to specialized sub-agents, each with its own system prompt, skill
 - **coder** — focused on programming tasks
 - **writer** — articles, drafts, long-form content
 
-Delegation is automatic based on trigger patterns, or you can call an agent directly with `/ask <id> <message>`.
+Delegation is automatic based on trigger patterns, or you can call an agent directly with `/ask <id> <message>`. See [docs/team.md](docs/team.md).
 
 ### 🖥️ Web Dashboard
 
@@ -157,6 +177,30 @@ The setup wizard can configure your server with:
 - UFW firewall (only SSH + necessary ports)
 - fail2ban (brute-force protection)
 - Swap file (stability on low-memory VPS)
+
+---
+
+## Integrations
+
+opskrew supports first-class integrations with external services, all configured via the setup wizard and stored securely in the encrypted vault.
+
+| Integration | What it does | Setup |
+|---|---|---|
+| **Email** | Read, search, and send email via IMAP/SMTP | `opskrew setup --section email` · [docs](docs/email.md) |
+| **Google Calendar** | View and create calendar events | Place service account JSON · [docs](docs/calendar.md) |
+| **GitHub** | Repos, issues, PRs, notifications | `opskrew setup --section github` · [docs](docs/github.md) |
+
+---
+
+## Documentation
+
+- [Email integration](docs/email.md) — Gmail, Outlook, IMAP/SMTP setup and commands
+- [Calendar integration](docs/calendar.md) — Google Calendar service account setup
+- [GitHub integration](docs/github.md) — Personal access token and available commands
+- [Security](docs/security.md) — Vault encryption, token detection, skill scanner, server hardening
+- [Skills](docs/skills.md) — AgentSkills format, creating custom skills, scanner
+- [Team agents](docs/team.md) — Built-in agents, custom agents, delegation
+- [Dashboard](docs/dashboard.md) — SSH tunnel access, all dashboard sections
 
 ---
 
@@ -208,10 +252,12 @@ What you can do from the dashboard:
 - Create and manage reminders (with datetime picker)
 - View usage stats and token cost estimation
 - Upload and remove knowledge base files
-- Create, edit, enable/disable, and install skills
+- Create, edit, enable/disable, and install skills (with security scan)
 - Create team agents, assign skills, and view their history
 - Change any setting without touching config files
 - One-click Update and Restart buttons in the sidebar
+
+See [docs/dashboard.md](docs/dashboard.md) for full details.
 
 ---
 
