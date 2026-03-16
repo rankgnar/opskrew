@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import { rmSync } from "node:fs";
 
 const external = [
   "better-sqlite3",
@@ -8,12 +9,14 @@ const external = [
   "express",
 ];
 
+// Clean dist/ once before both builds
+try { rmSync("dist", { recursive: true, force: true }); } catch {}
+
 export default defineConfig([
   {
     entry: ["src/index.ts"],
     format: ["esm"],
     dts: false,
-    clean: true,
     target: "es2022",
     external,
     banner: { js: "#!/usr/bin/env node" },
