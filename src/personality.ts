@@ -136,6 +136,15 @@ Do NOT mention that you're in "onboarding mode" or that this is scripted. Be nat
     );
   }
 
+  if (features.skills !== false) {
+    toolInstructions.push(
+      "Skill management — use these to find and install new capabilities:\n" +
+      "  [SKILL_SEARCH: what you need] — search the web for relevant AI skills/tools\n" +
+      "  [SKILL_INSTALL: https://raw.githubusercontent.com/.../skill.md] — install a skill from URL\n" +
+      "When you realize you lack a capability, search for skills proactively."
+    );
+  }
+
   if (toolInstructions.length > 0) {
     parts.push(
       `\n## Your tools (USE THEM):\nYou have these tools built-in. Use them proactively — don't ask the user for information you can look up yourself. Include the tags in your response and the system executes them automatically.\n\n${toolInstructions.join("\n\n")}`

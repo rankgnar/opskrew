@@ -16,6 +16,7 @@ export interface Features {
   email?: boolean;
   calendar?: boolean;
   github?: boolean;
+  skills?: boolean;
 }
 
 export interface Config {

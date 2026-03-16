@@ -19,6 +19,7 @@ import {
   githubCreateIssue,
   githubNotifications,
 } from "../tools/github.js";
+import { searchSkills, installSkillFromUrl } from "../tools/skill-discovery.js";
 
 // ── Security: API token patterns ─────────────────────────────────────────────
 const TOKEN_PATTERNS = [
@@ -356,6 +357,51 @@ export async function processResponse(
         ...messages,
         { role: "assistant" as const, content: rawReply },
         { role: "user" as const, content: `GitHub notifications:\n\n${result}\n\nPlease present these notifications to the user.` },
+      ];
+      const r = await chat(toolMessages, systemPrompt, model);
+      trackUsage(chatId, r.usage.input_tokens, r.usage.output_tokens, model);
+      reply = parseMemoryFromResponse(r.text);
+    }
+  }
+
+  // Step 8: Skill Discovery
+  if (features.skills !== false) {
+    // SKILL_SEARCH
+    const skillSearchRegex = /\[SKILL_SEARCH:\s*([^\]]+)\]/i;
+    const skillSearchMatch = skillSearchRegex.exec(reply);
+    if (skillSearchMatch) {
+      const query = skillSearchMatch[1].trim();
+      reply = reply.replace(skillSearchRegex, "").trim();
+      console.log(`[shared] Searching for skills: "${query}"`);
+      const searchResults = await searchSkills(query);
+      const toolMessages: Message[] = [
+        ...messages,
+        { role: "assistant" as const, content: rawReply },
+        {
+          role: "user" as const,
+          content: `Skill search results:\n\n${searchResults}\n\nPresent the relevant skills found and suggest which ones might be useful. If a direct install URL is available, mention it.`,
+        },
+      ];
+      const r = await chat(toolMessages, systemPrompt, model);
+      trackUsage(chatId, r.usage.input_tokens, r.usage.output_tokens, model);
+      reply = parseMemoryFromResponse(r.text);
+    }
+
+    // SKILL_INSTALL
+    const skillInstallRegex = /\[SKILL_INSTALL:\s*(https?:\/\/[^\]]+)\]/i;
+    const skillInstallMatch = skillInstallRegex.exec(reply);
+    if (skillInstallMatch) {
+      const url = skillInstallMatch[1].trim();
+      reply = reply.replace(skillInstallRegex, "").trim();
+      console.log(`[shared] Installing skill from URL: ${url}`);
+      const installResult = await installSkillFromUrl(url);
+      const toolMessages: Message[] = [
+        ...messages,
+        { role: "assistant" as const, content: rawReply },
+        {
+          role: "user" as const,
+          content: `Skill installation result: ${installResult}`,
+        },
       ];
       const r = await chat(toolMessages, systemPrompt, model);
       trackUsage(chatId, r.usage.input_tokens, r.usage.output_tokens, model);
