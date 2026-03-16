@@ -131,7 +131,7 @@ Do NOT mention that you're in "onboarding mode" or that this is scripted. Be nat
 
   if (toolInstructions.length > 0) {
     parts.push(
-      `\n## Available tools:\nThe system will execute these tags automatically and you'll see the results.\n\n${toolInstructions.join("\n\n")}`
+      `\n## Your tools (USE THEM):\nYou have these tools built-in. Use them proactively — don't ask the user for information you can look up yourself. Include the tags in your response and the system executes them automatically.\n\n${toolInstructions.join("\n\n")}`
     );
   }
 

@@ -30,7 +30,7 @@ export const PERSONALITIES: Personality[] = [
     emoji: "😎",
     description: "Relaxed, friendly, conversational",
     systemPromptModifier:
-      "You are in casual mode. Be relaxed, friendly, and conversational. Use informal language. Feel free to use emojis and humor. Keep things light and fun.",
+      "You are in casual mode. Be relaxed, friendly, and conversational. Use informal language. Keep things light. Still follow the CRITICAL BEHAVIOR RULES above (stay concise, minimal emojis).",
   },
   {
     id: "creative",
