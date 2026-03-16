@@ -1331,278 +1331,95 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     _currentDashEnabled = !!(cfg.dashboard && cfg.dashboard.enabled);
     _currentAutoUpdate = cfg.autoUpdate !== false;
 
-    const body = document.getElementById('content-body');
+    var body = document.getElementById('content-body');
+    var a = cfg.assistant || {};
+    var ch = cfg.channels || {};
+    var ft = cfg.features || {};
+    var ds = cfg.dashboard || {};
+    var h = [];
 
-    const featureMap = [
-      { icon: '🔍', label: 'Web Search',    key: 'webSearch' },
-      { icon: '🌐', label: 'URL Reader',     key: 'urlReader' },
-      { icon: '📚', label: 'Knowledge Base', key: 'knowledge' },
-      { icon: '⏰', label: 'Reminders',      key: 'reminders' },
-      { icon: '👁️', label: 'Vision',         key: 'vision' },
-      { icon: '🔄', label: 'Auto-Summary',   key: 'autoSummary' },
-      { icon: '🤖', label: 'Team Auto-Delegate', key: 'teamAutoDelegate' },
-    ];
+    var curProv = a.provider || 'anthropic';
+    var pd = _allProviders.find(function(p){return p.id===curProv;});
+    var pm = pd ? pd.models : [];
+    var isCust = curProv==='custom' || pm.length===0;
 
-    const assistant = cfg.assistant || {};
-    const channels  = cfg.channels  || {};
-    const features  = cfg.features  || {};
-    const dash      = cfg.dashboard || {};
+    function opt(val,cur,label){return '<option value="'+esc(val)+'"'+(val===cur?' selected':'')+'>'+esc(label||val)+'</option>';}
+    function row(){h.push(Array.prototype.join.call(arguments,''));}
 
-    const currentProvider = assistant.provider || 'anthropic';
-    const providerData = _allProviders.find(function(p) { return p.id === currentProvider; });
-    const providerModels = providerData ? providerData.models : [];
-    const isCustom = currentProvider === 'custom' || providerModels.length === 0;
+    var provOpts=''; _allProviders.forEach(function(p){provOpts+=opt(p.id,curProv,p.name);});
+    var tones=['helpful and friendly','professional and formal','casual and relaxed','concise and direct','warm and empathetic','technical and precise'];
+    var curTone=a.tone||'helpful and friendly';
+    var toneOpts=''; tones.forEach(function(t){toneOpts+=opt(t,curTone);});
+    var modOpts=''; pm.forEach(function(m){modOpts+=opt(m.id,a.model,m.name);});
 
-    const providerOptions = _allProviders.map(function(p) {
-      return '<option value="' + esc(p.id) + '"' + (p.id === currentProvider ? ' selected' : '') + '>' + esc(p.name) + '</option>';
-    }).join('');
+    // Assistant
+    row('<div class="settings-section"><div class="settings-section-title">Assistant</div><div class="settings-grid">');
+    row('<div class="settings-card"><div class="settings-card-label">Name</div><input class="settings-input" id="cfg-name" value="',esc(a.name||''),'" placeholder="Opskrew"/></div>');
+    row('<div class="settings-card"><div class="settings-card-label">Language</div><input class="settings-input" id="cfg-language" value="',esc(a.language||''),'" placeholder="English"/></div>');
+    row('<div class="settings-card"><div class="settings-card-label">Tone</div><select class="settings-input-select" id="cfg-tone">',toneOpts,'</select></div>');
+    row('<div class="settings-card"><div class="settings-card-label">Provider</div><select class="settings-input-select" id="cfg-provider" onchange="onProviderChange()">',provOpts,'</select></div>');
+    row('<div class="settings-card" id="custom-endpoint-row" style="display:',isCust?'block':'none','"><div class="settings-card-label">Custom Endpoint</div><input class="settings-input" id="cfg-custom-endpoint" value="',esc(a.customEndpoint||''),'" placeholder="https://..."/></div>');
+    row('<div class="settings-card"><div class="settings-card-label">Model</div><select class="settings-input-select" id="cfg-model" style="display:',isCust?'none':'','">',modOpts,'</select><div id="custom-model-row" style="display:',isCust?'block':'none','"><input class="settings-input" id="cfg-model-custom" value="',esc(isCust?a.model||'':''),'" placeholder="e.g. gpt-4o"/></div></div>');
+    row('</div><div style="margin-top:16px"><button class="btn-primary" onclick="saveSettings()">Save Settings</button></div>');
+    row('<div class="restart-prompt" id="restart-prompt">Saved! <button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="triggerRestart()">Restart now</button></div></div>');
 
-    const toneValues = [
-      'helpful and friendly',
-      'professional and formal',
-      'casual and relaxed',
-      'concise and direct',
-      'warm and empathetic',
-      'technical and precise',
-    ];
-    const currentTone = assistant.tone || 'helpful and friendly';
-    const toneOptions = toneValues.map(function(t) {
-      return '<option value="' + esc(t) + '"' + (t === currentTone ? ' selected' : '') + '>' + esc(t) + '</option>';
-    }).join('');
+    // Features
+    var fmap=[{i:'&#128269;',l:'Web Search',k:'webSearch'},{i:'&#127760;',l:'URL Reader',k:'urlReader'},{i:'&#128218;',l:'Knowledge Base',k:'knowledge'},{i:'&#9200;',l:'Reminders',k:'reminders'},{i:'&#128065;',l:'Vision',k:'vision'},{i:'&#128260;',l:'Auto-Summary',k:'autoSummary'},{i:'&#129302;',l:'Team Auto-Delegate',k:'teamAutoDelegate'}];
+    row('<div class="settings-section"><div class="settings-section-title">Features <span style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(click to toggle)</span></div><div class="features-grid">');
+    fmap.forEach(function(f){
+      row('<div class="feature-row clickable" id="feat-row-',f.k,'" onclick="toggleFeature(&quot;',f.k,'&quot;)"><div class="feature-icon">',f.i,'</div><div class="feature-name">',esc(f.l),'</div><div class="toggle ',ft[f.k]?'on':'off','" id="feat-toggle-',f.k,'"></div></div>');
+    });
+    row('<div class="feature-row clickable" onclick="toggleVoice()"><div class="feature-icon">&#127908;</div><div class="feature-name">Voice</div><div class="toggle ',_currentVoice?'on':'off','" id="feat-toggle-voice"></div></div>');
+    row('<div class="feature-row clickable" onclick="toggleDashboard()"><div class="feature-icon">&#128421;</div><div class="feature-name">Dashboard (:',esc(String(ds.port||3000)),')</div><div class="toggle ',_currentDashEnabled?'on':'off','" id="feat-toggle-dashboard"></div></div>');
+    row('<div class="feature-row clickable" onclick="toggleAutoUpdate()"><div class="feature-icon">&#128260;</div><div class="feature-name">Auto-Update</div><div class="toggle ',_currentAutoUpdate?'on':'off','" id="feat-toggle-autoUpdate"></div></div>');
+    row('</div></div>');
 
-    const modelOptions = providerModels.map(function(m) {
-      return '<option value="' + esc(m.id) + '"' + (m.id === assistant.model ? ' selected' : '') + '>' + esc(m.name) + '</option>';
-    }).join('');
+    // Integrations
+    row('<div class="settings-section"><div class="settings-section-title">Integrations</div><div class="settings-grid">');
+    if(toolsStatus){
+      [{l:'Email (IMAP/SMTP)',k:'email'},{l:'Google Calendar',k:'calendar'},{l:'GitHub',k:'github'}].forEach(function(t){
+        var s=toolsStatus[t.k]||{};
+        row('<div class="settings-card"><div class="settings-card-label">',esc(t.l),'</div><div class="settings-card-value" style="color:',s.configured?'var(--green)':'#ff9944','">',s.configured?'Configured':'Not configured','</div><div style="font-size:11px;color:var(--muted);margin-top:4px">',s.enabled?'Enabled':'Disabled',' &middot; opskrew setup --section ',t.k,'</div></div>');
+      });
+    } else {
+      row('<div style="color:var(--muted);font-size:13px">Could not load status.</div>');
+    }
+    row('</div></div>');
 
-    const assistantCards = \`
-      <div class="settings-card">
-        <div class="settings-card-label">Name</div>
-        <input class="settings-input" id="cfg-name" value="\${esc(assistant.name || '')}" placeholder="Opskrew"/>
-      </div>
-      <div class="settings-card">
-        <div class="settings-card-label">Language</div>
-        <input class="settings-input" id="cfg-language" value="\${esc(assistant.language || '')}" placeholder="English"/>
-      </div>
-      <div class="settings-card">
-        <div class="settings-card-label">Tone</div>
-        <select class="settings-input-select" id="cfg-tone">
-          \${toneOptions}
-        </select>
-      </div>
-      <div class="settings-card">
-        <div class="settings-card-label">Provider</div>
-        <select class="settings-input-select" id="cfg-provider" onchange="onProviderChange()">
-          \${providerOptions}
-        </select>
-      </div>
-      <div class="settings-card" id="custom-endpoint-row" style="display:\${currentProvider === 'custom' ? 'block' : 'none'}">
-        <div class="settings-card-label">Custom Endpoint URL</div>
-        <input class="settings-input" id="cfg-custom-endpoint" value="\${esc(assistant.customEndpoint || '')}" placeholder="https://your-api.example.com/v1/chat/completions"/>
-      </div>
-      <div class="settings-card">
-        <div class="settings-card-label">Model</div>
-        <select class="settings-input-select" id="cfg-model" style="display:\${isCustom ? 'none' : ''}">
-          \${modelOptions}
-        </select>
-        <div id="custom-model-row" style="display:\${isCustom ? 'block' : 'none'}">
-          <input class="settings-input" id="cfg-model-custom" value="\${esc(isCustom ? assistant.model || '' : '')}" placeholder="e.g. gpt-4o or llama3"/>
-        </div>
-      </div>\`;
+    // Channels
+    var tg=ch.telegram||{};var dc=ch.discord||{};var wa=ch.whatsapp||{};
+    row('<div class="settings-section"><div class="settings-section-title">Channels</div>');
+    [{name:'Telegram',icon:'&#128241;',id:'tg',users:tg.allowedUsers,en:tg.enabled,cfg:'telegram',tokenId:'ch-tg-token',usersId:'ch-tg-users',usersLabel:'Allowed Users',ph:'@user1, @user2'},
+     {name:'Discord',icon:'&#127918;',id:'dc',users:dc.allowedUsers,en:dc.enabled,cfg:'discord',tokenId:'ch-dc-token',usersId:'ch-dc-users',usersLabel:'Allowed User IDs',ph:'123456789'},
+     {name:'WhatsApp',icon:'&#128172;',id:'wa',users:wa.allowedNumbers,en:wa.enabled,cfg:'whatsapp',tokenId:null,usersId:'ch-wa-numbers',usersLabel:'Allowed Numbers',ph:'34612345678'}
+    ].forEach(function(c){
+      row('<div class="channel-row"><div class="channel-row-header"><div class="channel-icon">',c.icon,'</div><div class="channel-info"><div class="channel-name">',esc(c.name),'</div><div class="channel-users">',(c.users||[]).join(', ')||'none','</div></div>',statusBadge(c.en),'<button class="btn-secondary" onclick="toggleChannelForm(&quot;',c.id,'&quot;)">Configure</button></div>');
+      row('<div class="channel-configure-form" id="ch-form-',c.id,'">');
+      if(c.tokenId){row('<div class="channel-form-row"><div class="channel-form-label">Bot Token</div>',pwInput(c.tokenId,'Paste token...'),'</div>');}
+      if(c.id==='wa'){row('<div class="channel-form-row"><div class="channel-form-label">Enabled</div><label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="ch-wa-enabled" ',wa.enabled?'checked':'','/><span style="font-size:13px;color:var(--text)">Enable WhatsApp</span></label></div>');}
+      row('<div class="channel-form-row"><div class="channel-form-label">',esc(c.usersLabel),'</div><input class="settings-input" id="',c.usersId,'" value="',esc((c.users||[]).join(', ')),'" placeholder="',c.ph,'"/></div>');
+      row('<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-primary" onclick="saveChannelConfig(&quot;',c.cfg,'&quot;)">Save</button><button class="btn-secondary" onclick="toggleChannelForm(&quot;',c.id,'&quot;)">Cancel</button></div>');
+      row('</div></div>');
+    });
+    row('</div>');
 
-    const tg = channels.telegram || {};
-    const dc = channels.discord  || {};
-    const wa = channels.whatsapp || {};
+    // Personalities
+    var curPers = cfg.personality || 'default';
+    var pers=[{id:'default',e:'&#129302;',n:'Default',d:'Balanced and helpful'},{id:'professional',e:'&#128188;',n:'Professional',d:'Formal, structured'},{id:'casual',e:'&#128526;',n:'Casual',d:'Relaxed, friendly'},{id:'creative',e:'&#127912;',n:'Creative',d:'Imaginative, expressive'},{id:'concise',e:'&#9889;',n:'Concise',d:'Minimal, direct'},{id:'teacher',e:'&#128218;',n:'Teacher',d:'Educational, step by step'}];
+    row('<div class="settings-section"><div class="settings-section-title">Personalities &mdash; click to set default</div><div class="personality-grid">');
+    pers.forEach(function(p){
+      var act=p.id===curPers;
+      row('<div class="personality-card" onclick="setDefaultPersonality(&quot;',p.id,'&quot;)" style="cursor:pointer;',act?'border-color:var(--green);box-shadow:0 0 12px rgba(0,255,136,0.15)':'','"><div class="personality-emoji">',p.e,'</div><div class="personality-info"><div class="personality-name">',esc(p.n),'</div><div class="personality-desc">',esc(p.d),'</div></div></div>');
+    });
+    row('</div></div>');
 
-    const channelRows = \`
-      <div class="channel-row">
-        <div class="channel-row-header">
-          <div class="channel-icon">📱</div>
-          <div class="channel-info">
-            <div class="channel-name">Telegram</div>
-            <div class="channel-users">Allowed: \${esc((tg.allowedUsers || []).join(', ') || 'none')}</div>
-          </div>
-          \${statusBadge(tg.enabled)}
-          <button class="btn-secondary" onclick="toggleChannelForm('tg')">Configure</button>
-        </div>
-        <div class="channel-configure-form" id="ch-form-tg">
-          <div class="channel-form-row">
-            <div class="channel-form-label">Bot Token</div>
-            \${pwInput('ch-tg-token', 'Paste bot token…')}
-          </div>
-          <div class="channel-form-row">
-            <div class="channel-form-label">Allowed Users (comma-separated)</div>
-            <input class="settings-input" id="ch-tg-users" value="\${esc((tg.allowedUsers || []).join(', '))}" placeholder="@user1, @user2"/>
-          </div>
-          <div style="display:flex;gap:8px;margin-top:10px">
-            <button class="btn-primary" onclick="saveChannelConfig('telegram')">💾 Save</button>
-            <button class="btn-secondary" onclick="toggleChannelForm('tg')">Cancel</button>
-          </div>
-        </div>
-      </div>
+    // System Info
+    var si=[{l:'Version',v:sys.version||'-'},{l:'Uptime',v:fmtUptime(sys.uptime||0)},{l:'Memory',v:(sys.memory||0)+' MB'},{l:'Node',v:sys.nodeVersion||'-'},{l:'Platform',v:sys.platform||'-'}];
+    row('<div class="settings-section"><div class="settings-section-title">System Info</div><div class="sysinfo-grid">');
+    si.forEach(function(c){row('<div class="sysinfo-card"><div class="sysinfo-label">',esc(c.l),'</div><div class="sysinfo-value">',esc(c.v),'</div></div>');});
+    row('</div></div>');
 
-      <div class="channel-row">
-        <div class="channel-row-header">
-          <div class="channel-icon">🎮</div>
-          <div class="channel-info">
-            <div class="channel-name">Discord</div>
-            <div class="channel-users">Allowed: \${esc((dc.allowedUsers || []).join(', ') || 'none')}</div>
-          </div>
-          \${statusBadge(dc.enabled)}
-          <button class="btn-secondary" onclick="toggleChannelForm('dc')">Configure</button>
-        </div>
-        <div class="channel-configure-form" id="ch-form-dc">
-          <div class="channel-form-row">
-            <div class="channel-form-label">Bot Token</div>
-            \${pwInput('ch-dc-token', 'Paste bot token…')}
-          </div>
-          <div class="channel-form-row">
-            <div class="channel-form-label">Allowed User IDs (comma-separated)</div>
-            <input class="settings-input" id="ch-dc-users" value="\${esc((dc.allowedUsers || []).join(', '))}" placeholder="123456789, 987654321"/>
-          </div>
-          <div style="display:flex;gap:8px;margin-top:10px">
-            <button class="btn-primary" onclick="saveChannelConfig('discord')">💾 Save</button>
-            <button class="btn-secondary" onclick="toggleChannelForm('dc')">Cancel</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="channel-row">
-        <div class="channel-row-header">
-          <div class="channel-icon">💬</div>
-          <div class="channel-info">
-            <div class="channel-name">WhatsApp</div>
-            <div class="channel-users">Numbers: \${esc((wa.allowedNumbers || []).join(', ') || 'none')}</div>
-          </div>
-          \${statusBadge(wa.enabled)}
-          <button class="btn-secondary" onclick="toggleChannelForm('wa')">Configure</button>
-        </div>
-        <div class="channel-configure-form" id="ch-form-wa">
-          <div class="channel-form-row">
-            <div class="channel-form-label">Enabled</div>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-              <input type="checkbox" id="ch-wa-enabled" \${wa.enabled ? 'checked' : ''}/>
-              <span style="font-size:13px;color:var(--text)">Enable WhatsApp channel</span>
-            </label>
-          </div>
-          <div class="channel-form-row">
-            <div class="channel-form-label">Allowed Numbers (comma-separated)</div>
-            <input class="settings-input" id="ch-wa-numbers" value="\${esc((wa.allowedNumbers || []).join(', '))}" placeholder="34612345678, 46701234567"/>
-          </div>
-          <div style="display:flex;gap:8px;margin-top:10px">
-            <button class="btn-primary" onclick="saveChannelConfig('whatsapp')">💾 Save</button>
-            <button class="btn-secondary" onclick="toggleChannelForm('wa')">Cancel</button>
-          </div>
-        </div>
-      </div>\`;
-
-    const featureRows = featureMap.map(function(f) {
-      return \`<div class="feature-row clickable" id="feat-row-\${f.key}" onclick="toggleFeature('\${f.key}')">
-        <div class="feature-icon">\${f.icon}</div>
-        <div class="feature-name">\${esc(f.label)}</div>
-        <div class="toggle \${!!features[f.key] ? 'on' : 'off'}" id="feat-toggle-\${f.key}"></div>
-      </div>\`;
-    }).join('') + \`
-      <div class="feature-row clickable" id="feat-row-voice" onclick="toggleVoice()">
-        <div class="feature-icon">🎙️</div>
-        <div class="feature-name">Voice</div>
-        <div class="toggle \${_currentVoice ? 'on' : 'off'}" id="feat-toggle-voice"></div>
-      </div>
-      <div class="feature-row clickable" id="feat-row-dashboard" onclick="toggleDashboard()">
-        <div class="feature-icon">🖥️</div>
-        <div class="feature-name">Dashboard (:\${esc(String(dash.port || 3000))})</div>
-        <div class="toggle \${_currentDashEnabled ? 'on' : 'off'}" id="feat-toggle-dashboard"></div>
-      </div>
-      <div class="feature-row clickable" id="feat-row-autoUpdate" onclick="toggleAutoUpdate()">
-        <div class="feature-icon">🔄</div>
-        <div class="feature-name">Auto-Update <span id="auto-update-check-time" style="font-size:10px;color:var(--muted)"></span></div>
-        <div class="toggle \${_currentAutoUpdate ? 'on' : 'off'}" id="feat-toggle-autoUpdate"></div>
-      </div>\`;
-
-    const sysinfoCards = [
-      { label: 'Version',  value: sys.version     || '–' },
-      { label: 'Uptime',   value: fmtUptime(sys.uptime || 0) },
-      { label: 'Memory',   value: (sys.memory || 0) + ' MB' },
-      { label: 'Node',     value: sys.nodeVersion || '–' },
-      { label: 'Platform', value: sys.platform    || '–' },
-    ].map(function(c) {
-      return \`<div class="sysinfo-card">
-        <div class="sysinfo-label">\${esc(c.label)}</div>
-        <div class="sysinfo-value">\${esc(c.value)}</div>
-      </div>\`;
-    }).join('');
-
-    const currentPersonality = cfg.personality || 'default';
-
-    const personalityList = [
-      { id: 'default',      emoji: '🤖', name: 'Default',      desc: 'Balanced and helpful' },
-      { id: 'professional', emoji: '💼', name: 'Professional', desc: 'Formal, structured, business-focused' },
-      { id: 'casual',       emoji: '😎', name: 'Casual',       desc: 'Relaxed, friendly, conversational' },
-      { id: 'creative',     emoji: '🎨', name: 'Creative',     desc: 'Imaginative, poetic, expressive' },
-      { id: 'concise',      emoji: '⚡', name: 'Concise',      desc: 'Minimal, direct, no fluff' },
-      { id: 'teacher',      emoji: '📚', name: 'Teacher',      desc: 'Educational, patient, explains step by step' },
-    ];
-
-    const personalityCards = personalityList.map(function(p) {
-      const isActive = p.id === currentPersonality;
-      return \`<div class="personality-card" onclick="setDefaultPersonality('\${p.id}')" style="cursor:pointer;\${isActive ? 'border-color:var(--green)' : ''}">
-        <div class="personality-emoji">\${p.emoji}</div>
-        <div class="personality-info">
-          <div class="personality-name">\${esc(p.name)}</div>
-          <div class="personality-desc">\${esc(p.desc)}</div>
-        </div>
-      </div>\`;
-    }).join('');
-
-    body.innerHTML = \`
-      <div class="settings-section">
-        <div class="settings-section-title">🤖 Assistant</div>
-        <div class="settings-grid">\${assistantCards}</div>
-        <div style="margin-top:16px;display:flex;gap:10px;align-items:center">
-          <button class="btn-primary" onclick="saveSettings()">💾 Save Settings</button>
-        </div>
-        <div class="restart-prompt" id="restart-prompt">
-          ✅ Saved! Restart to apply changes.
-          <button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="triggerRestart()">🔁 Restart now</button>
-        </div>
-      </div>
-      <div class="settings-section">
-        <div class="settings-section-title">🔧 Features <span style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">(click to toggle — auto-saves)</span></div>
-        <div class="features-grid">\${featureRows}</div>
-      </div>
-      <div class="settings-section">
-        <div class="settings-section-title">🔌 Integrations</div>
-        <div class="settings-grid">
-          \${toolsStatus ? \`
-          <div class="settings-card">
-            <div class="settings-card-label">Email (IMAP/SMTP)</div>
-            <div class="settings-card-value" style="color:\${toolsStatus.email.configured ? 'var(--green)' : '#ff9944'}">\${toolsStatus.email.configured ? 'Configured' : 'Not configured'}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">Feature: \${toolsStatus.email.enabled ? 'Enabled' : 'Disabled'} &middot; opskrew setup --section email</div>
-          </div>
-          <div class="settings-card">
-            <div class="settings-card-label">Google Calendar</div>
-            <div class="settings-card-value" style="color:\${toolsStatus.calendar.configured ? 'var(--green)' : '#ff9944'}">\${toolsStatus.calendar.configured ? 'Configured' : 'Not configured'}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">Feature: \${toolsStatus.calendar.enabled ? 'Enabled' : 'Disabled'} &middot; opskrew setup --section calendar</div>
-          </div>
-          <div class="settings-card">
-            <div class="settings-card-label">GitHub</div>
-            <div class="settings-card-value" style="color:\${toolsStatus.github.configured ? 'var(--green)' : '#ff9944'}">\${toolsStatus.github.configured ? 'Configured' : 'Not configured'}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">Feature: \${toolsStatus.github.enabled ? 'Enabled' : 'Disabled'} &middot; opskrew setup --section github</div>
-          </div>
-          \` : '<div style="color:var(--muted);font-size:13px">Could not load integrations status.</div>'}
-        </div>
-      </div>
-      <div class="settings-section">
-        <div class="settings-section-title">📡 Channels</div>
-        \${channelRows}
-      </div>
-      <div class="settings-section">
-        <div class="settings-section-title">🎭 Personalities — switch with /mode</div>
-        <div class="personality-grid">\${personalityCards}</div>
-      </div>
-      <div class="settings-section">
-        <div class="settings-section-title">🖥️ System Info</div>
-        <div class="sysinfo-grid">\${sysinfoCards}</div>
-      </div>\`;
+    body.innerHTML = h.join('');
   }
 
   /* ── Channel configure ─────────────────────────────── */
