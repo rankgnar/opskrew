@@ -348,20 +348,21 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     }
     .settings-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
     }
     .settings-card {
       background: rgba(255,255,255,0.03);
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255,255,255,0.06);
       border-radius: 12px;
-      padding: 14px 16px;
+      min-width: 260px;
+      padding: 18px 20px;
       transition: border-color 0.2s;
     }
     .settings-card:hover { border-color: rgba(0,255,136,0.2); }
     .settings-card-label {
-      font-size: 11px; color: var(--muted);
+      font-size: 13px; color: var(--muted);
       margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;
     }
     .settings-card-value { font-size: 14px; font-weight: 600; color: var(--green); word-break: break-all; }
@@ -1353,6 +1354,19 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       return '<option value="' + esc(p.id) + '"' + (p.id === currentProvider ? ' selected' : '') + '>' + esc(p.name) + '</option>';
     }).join('');
 
+    const toneValues = [
+      'helpful and friendly',
+      'professional and formal',
+      'casual and relaxed',
+      'concise and direct',
+      'warm and empathetic',
+      'technical and precise',
+    ];
+    const currentTone = assistant.tone || 'helpful and friendly';
+    const toneOptions = toneValues.map(function(t) {
+      return '<option value="' + esc(t) + '"' + (t === currentTone ? ' selected' : '') + '>' + esc(t) + '</option>';
+    }).join('');
+
     const modelOptions = providerModels.map(function(m) {
       return '<option value="' + esc(m.id) + '"' + (m.id === assistant.model ? ' selected' : '') + '>' + esc(m.name) + '</option>';
     }).join('');
@@ -1368,7 +1382,9 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       </div>
       <div class="settings-card">
         <div class="settings-card-label">Tone</div>
-        <input class="settings-input" id="cfg-tone" value="\${esc(assistant.tone || '')}" placeholder="helpful and friendly"/>
+        <select class="settings-input-select" id="cfg-tone">
+          \${toneOptions}
+        </select>
       </div>
       <div class="settings-card">
         <div class="settings-card-label">Provider</div>
@@ -1512,6 +1528,8 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       </div>\`;
     }).join('');
 
+    const currentPersonality = cfg.personality || 'default';
+
     const personalityList = [
       { id: 'default',      emoji: '🤖', name: 'Default',      desc: 'Balanced and helpful' },
       { id: 'professional', emoji: '💼', name: 'Professional', desc: 'Formal, structured, business-focused' },
@@ -1522,7 +1540,8 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     ];
 
     const personalityCards = personalityList.map(function(p) {
-      return \`<div class="personality-card">
+      const isActive = p.id === currentPersonality;
+      return \`<div class="personality-card" onclick="setDefaultPersonality('\${p.id}')" style="cursor:pointer;\${isActive ? 'border-color:var(--green)' : ''}">
         <div class="personality-emoji">\${p.emoji}</div>
         <div class="personality-info">
           <div class="personality-name">\${esc(p.name)}</div>
@@ -1919,6 +1938,20 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       loadRemindersView();
       toast('Reminder deleted');
     } catch (e) { toast('Failed to delete reminder', 'error'); }
+  }
+
+  /* ── Set default personality ───────────────────────── */
+  async function setDefaultPersonality(id) {
+    try {
+      const r = await fetch('/api/config', {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ personality: id })
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      toast('Default personality set to ' + id);
+      loadSettings();
+    } catch (e) { toast('Failed to set personality: ' + e.message, 'error'); }
   }
 
   /* ── Settings save ─────────────────────────────────── */
@@ -2768,6 +2801,7 @@ export function startDashboard(port = 3000): void {
       const config = getConfig();
       const voiceOn = config.voiceEnabled !== false && !!config.groqApiKey;
       res.json({
+        personality: config.personality ?? "default",
         assistant: {
           name: config.name,
           language: config.language,
@@ -2813,7 +2847,7 @@ export function startDashboard(port = 3000): void {
       const updates = req.body as Record<string, unknown>;
 
       // Text fields
-      const textFields = ["name", "language", "tone", "model", "provider", "customEndpoint"] as const;
+      const textFields = ["name", "language", "tone", "model", "provider", "customEndpoint", "personality"] as const;
       for (const key of textFields) {
         if (updates[key] !== undefined && typeof updates[key] === "string") {
           (config as Record<string, unknown>)[key] = (updates[key] as string).trim();
