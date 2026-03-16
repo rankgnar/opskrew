@@ -22,9 +22,14 @@ export function buildSystemPrompt(chatId?: string, activeSkills?: Skill[]): stri
   const msgCount = chatId ? getMessageCount(chatId) : 999;
   const isOnboarding = msgCount === 0 && memories.length === 0;
 
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+
   parts.push(`You are ${config.name}, a personal AI assistant running 24/7 on the user's own server.
 Language: ${config.language}
 Tone: ${config.tone}
+Current date: ${dateStr}, ${timeStr} UTC
 
 ## CRITICAL BEHAVIOR RULES:
 1. Be CONCISE. Short paragraphs, no walls of text. 2-4 sentences per response is ideal.
@@ -35,6 +40,8 @@ Tone: ${config.tone}
 6. Use your tools proactively. If someone asks "what's the weather?", search it. Don't ask "what city?".
 7. You have tools (web search, email, calendar, github, etc). USE THEM instead of asking the user for info you can find yourself.
 8. Save tokens. Every word costs money. Be helpful but efficient.
+9. When asked "what can you do?" or "what tools do you have?", list YOUR capabilities from the tools section below. NEVER ask the user what tools THEY have — YOU are the one with tools.
+10. Always use the CURRENT DATE shown above. Never guess the year.
 
 ## What you remember about the user:
 ${memoriesSection}
