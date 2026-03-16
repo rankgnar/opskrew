@@ -1,5 +1,4 @@
 import { defineConfig } from "tsup";
-import { rmSync } from "node:fs";
 
 const external = [
   "better-sqlite3",
@@ -9,23 +8,18 @@ const external = [
   "express",
 ];
 
-// Clean dist/ once before both builds
-try { rmSync("dist", { recursive: true, force: true }); } catch {}
-
-export default defineConfig([
-  {
-    entry: ["src/index.ts"],
-    format: ["esm"],
-    dts: false,
-    target: "es2022",
-    external,
-    banner: { js: "#!/usr/bin/env node" },
+export default defineConfig({
+  entry: ["src/index.ts", "src/runtime.ts"],
+  format: ["esm"],
+  dts: false,
+  clean: true,
+  target: "es2022",
+  external,
+  banner: (ctx) => {
+    // Only add shebang to the CLI entry
+    if (ctx.entryPoint === "src/index.ts") {
+      return { js: "#!/usr/bin/env node" };
+    }
+    return { js: "" };
   },
-  {
-    entry: ["src/runtime.ts"],
-    format: ["esm"],
-    dts: false,
-    target: "es2022",
-    external,
-  },
-]);
+});
