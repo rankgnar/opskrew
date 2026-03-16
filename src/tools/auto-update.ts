@@ -47,8 +47,8 @@ async function checkForUpdates(): Promise<void> {
     // Install ALL dependencies (need devDeps for build)
     run("npm install");
 
-    // Build
-    run("npm run build");
+    // Build — use npx to ensure tsup is found from local node_modules
+    run("npx tsup");
 
     updateCount++;
     console.log(`[auto-update] Updated to ${shortHash}. Restarting...`);
