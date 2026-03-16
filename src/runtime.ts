@@ -2,7 +2,7 @@ import { getDb } from "./db.js";
 import { getConfig } from "./config.js";
 import { getVault } from "./vault.js";
 import { startTelegram } from "./channels/telegram.js";
-import { readdirSync, writeFileSync } from "node:fs";
+import { readdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { SKILLS_DIR, ensureSkillsDir } from "./tools/skills.js";
 import { DEFAULT_SKILL_FILES } from "./tools/default-skills.js";
@@ -37,11 +37,30 @@ function installDefaultAgents(): void {
   ensureAgentsDir();
   const existing = readdirSync(AGENTS_DIR).filter((f) => f.endsWith(".json"));
   if (existing.length === 0) {
+    // Fresh install — create all defaults
     console.log("[opskrew] Installing default agents...");
     for (const agent of DEFAULT_AGENTS) {
       addAgent(agent);
     }
     console.log(`[opskrew] Installed ${DEFAULT_AGENTS.length} default agents`);
+  } else {
+    // Update existing default agents (preserves user-created ones)
+    for (const agent of DEFAULT_AGENTS) {
+      const path = join(AGENTS_DIR, `${agent.id}.json`);
+      if (existsSync(path)) {
+        try {
+          const current = JSON.parse(readFileSync(path, "utf-8"));
+          // Only update systemPrompt and triggerPatterns — preserve user customizations
+          if (current.systemPrompt !== agent.systemPrompt || JSON.stringify(current.triggerPatterns) !== JSON.stringify(agent.triggerPatterns)) {
+            current.systemPrompt = agent.systemPrompt;
+            current.triggerPatterns = agent.triggerPatterns;
+            current.tools = agent.tools;
+            writeFileSync(path, JSON.stringify(current, null, 2), "utf-8");
+            console.log(`[opskrew] Updated default agent: ${agent.id}`);
+          }
+        } catch { /* skip corrupted files */ }
+      }
+    }
   }
 }
 

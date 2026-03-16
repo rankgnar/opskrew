@@ -109,8 +109,9 @@ export async function delegateToAgent(agent: Agent, message: string, chatId: str
   const config = getConfig();
   const agentChatId = `agent:${agent.id}:${chatId}`;
 
-  // Build agent-specific system prompt
-  let systemPrompt = agent.systemPrompt;
+  // Build agent-specific system prompt with behavior rules
+  const config2 = getConfig();
+  let systemPrompt = `Language: ${config2.language}\n\n${agent.systemPrompt}`;
 
   // Inject agent's own skills (always load assigned skills, regardless of message triggers)
   if (agent.skills && agent.skills.length > 0) {
